@@ -1,0 +1,14 @@
+{
+  "name": "Multi-Agent Digest - Error Handler",
+  "nodes": [
+    {"parameters": {}, "name": "Error Trigger", "type": "n8n-nodes-base.errorTrigger", "typeVersion": 1, "position": [0, 0]},
+    {"parameters": {"resource": "message", "operation": "post", "authentication": "oAuth2", "select": "channel",
+      "channelId": {"__rl": true, "mode": "list", "value": "C0C86TU6Z9T", "cachedResultName": "project-october-error"},
+      "messageType": "text",
+      "text": "=:rotating_light: *Workflow failed: {{ $json.workflow.name }}*\n*Failed node:* {{ $json.execution.lastNodeExecuted || \"unknown\" }}\n*Error:* {{ $json.execution.error.message || \"no message\" }}\n*Time:* {{ $now.setZone(\"Asia/Kolkata\").toFormat(\"dd LLL yyyy, HH:mm:ss\") }} IST\n*Mode:* {{ $json.execution.mode }} | *Execution:* {{ $json.execution.id }}\n{{ $json.execution.url }}",
+      "otherOptions": {"includeLinkToWorkflow": false, "mrkdwn": true}},
+     "name": "Notify Error to Slack", "type": "n8n-nodes-base.slack", "typeVersion": 2.7, "position": [224, 0]}
+  ],
+  "connections": {"Error Trigger": {"main": [[{"node": "Notify Error to Slack", "type": "main", "index": 0}]]}},
+  "settings": {"executionOrder": "v1"}
+}
