@@ -1,0 +1,1073 @@
+{
+  "name": "Multi-Agent Daily Digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "653cff0f-5a7c-4980-9ec6-ea9dd116a418",
+      "name": "Daily 8 AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "o1",
+              "name": "userName",
+              "type": "string",
+              "value": "Sathish"
+            },
+            {
+              "id": "o2",
+              "name": "role",
+              "type": "string",
+              "value": "Technical Program Manager"
+            },
+            {
+              "id": "o3",
+              "name": "team",
+              "type": "string",
+              "value": "Product & Engineering"
+            },
+            {
+              "id": "o4",
+              "name": "vipContacts",
+              "type": "string",
+              "value": "CEO, VP Engineering, Product Director, key customers"
+            },
+            {
+              "id": "o5",
+              "name": "priorityKeywords",
+              "type": "string",
+              "value": "blocker, urgent, deadline, escalation, outage, approval, launch, risk"
+            },
+            {
+              "id": "o6",
+              "name": "timezone",
+              "type": "string",
+              "value": "Asia/Kolkata"
+            },
+            {
+              "id": "o7",
+              "name": "lookbackHours",
+              "type": "number",
+              "value": 24
+            },
+            {
+              "id": "o8",
+              "name": "enableSlack",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "o9",
+              "name": "enableGmail",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "o10",
+              "name": "enableCalendar",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "o11",
+              "name": "slackSearchQuery",
+              "type": "string",
+              "value": "in:#project_updates"
+            },
+            {
+              "id": "o12",
+              "name": "gmailQuery",
+              "type": "string",
+              "value": "-category:promotions -category:social"
+            },
+            {
+              "id": "o13",
+              "name": "gmailMaxResults",
+              "type": "number",
+              "value": 25
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e7b5e945-f364-4d50-aff6-443b0e2780dd",
+      "name": "Orchestrator",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        272,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pre-flight checklist: validate config BEFORE any API / LLM call\nconst c = Object.assign({}, $input.first().json);\nconst warnings = [];\nconst isBlank = function (v) {\n  return v === undefined || v === null || String(v).trim() === '';\n};\n\nconst sources = {\n  slack: c.enableSlack === true,\n  gmail: c.enableGmail === true,\n  calendar: c.enableCalendar === true,\n};\n\n// Misconfigured sources are skipped (warn), not crashed\nif (sources.slack && isBlank(c.slackSearchQuery)) {\n  sources.slack = false;\n  warnings.push('Slack skipped: slackSearchQuery is not configured');\n}\nif (!(Number(c.lookbackHours) > 0 && Number(c.lookbackHours) <= 168)) {\n  warnings.push('lookbackHours invalid - defaulting to 24');\n  c.lookbackHours = 24;\n}\nif (!(Number(c.gmailMaxResults) > 0 && Number(c.gmailMaxResults) <= 100)) {\n  warnings.push('gmailMaxResults invalid - defaulting to 25');\n  c.gmailMaxResults = 25;\n}\nObject.keys(sources).forEach(function (k) {\n  if (!sources[k]) warnings.push(k + ' disabled - will be skipped');\n});\n\n// Hard failure (fires the Error Workflow): nothing to digest\nif (!sources.slack && !sources.gmail && !sources.calendar) {\n  throw new Error('Guardrail failed: all sources are disabled - nothing to digest');\n}\n\nc.sources = sources;\nc.warnings = warnings;\nreturn [{ json: c }];"
+      },
+      "id": "51956159-2d3c-4c98-bd60-47eda8917804",
+      "name": "Guardrails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execution context + previous-run state (for [New] vs [Recurring] delta tracking)\nconst g = $input.first().json;\nconst store = $getWorkflowStaticData('global');\nconst now = new Date();\nconst out = Object.assign({}, g, {\n  sessionId: 'digest-' + now.getTime() + '-' + Math.random().toString(36).slice(2, 8),\n  runTimestamp: now.toISOString(),\n  runDate: $now.setZone(g.timezone || 'UTC').toFormat('cccc, dd LLL yyyy'),\n  lastRunAt: store.lastRunAt || null,\n  previousDigest: store.previousDigest || '',\n});\nreturn [{ json: out }];"
+      },
+      "id": "32cf4c8a-c877-49e6-bc15-aa525d5b073c",
+      "name": "State Management",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "s1",
+              "leftValue": "={{ $json.sources.slack }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f01077e7-66e4-4c76-8404-733969a2931b",
+      "name": "Slack Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "search",
+        "query": "={{ $(\"State Management\").first().json.slackSearchQuery }}",
+        "limit": 30,
+        "options": {
+          "after": "={{ $now.minus({ hours: $(\"State Management\").first().json.lookbackHours + 24 }).toFormat(\"yyyy-MM-dd\") }}"
+        }
+      },
+      "id": "6a297a52-02cf-4737-b3ba-b39e2b5c8e04",
+      "name": "Fetch Slack Messages",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        1024,
+        128
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "webhookId": "01378d61-3787-436c-917e-a7fd7215fdbf",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "M4vRF9oHzN1p9OcQ",
+          "name": "Slack account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input contract: normalize Slack results into one compact item (handles empty + failed fetch)\nconst items = $input.all().map(function (i) { return i.json; }).filter(function (j) { return Object.keys(j).length > 0; });\nconst failed = items.filter(function (j) { return j.error; });\n// Feedback-loop guard: skip bot posts and previous digests so the agent never re-ingests its own output\nconst isDigestEcho = function (m) {\n  const t = String(m.content || '');\n  return m.is_author_bot === true || t.indexOf('Daily Digest for') !== -1 || t.indexOf('_Session ') !== -1;\n};\nconst records = items.filter(function (j) { return !j.error && !isDigestEcho(j); }).slice(0, 30).map(function (m) {\n  return { channel: m.channel_name, author: m.author_name, text: String(m.content || '').slice(0, 400), link: m.permalink };\n});\nconst errMsg = failed.length ? String((failed[0].error && failed[0].error.message) || failed[0].error) : null;\nreturn [{ json: { source: 'Slack', fetchError: errMsg, count: records.length, records: JSON.stringify(records) } }];"
+      },
+      "id": "3d1e4149-65f0-4b51-9158-f6d8c69d5261",
+      "name": "Prep Slack Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Slack messages from the last {{ $(\"State Management\").first().json.lookbackHours }} hours ({{ $json.count }} messages):\n{{ $json.records }}",
+        "options": {
+          "systemMessage": "=You are the SLACK SPECIALIST agent in a multi-agent daily digest system. You are working for {{ $(\"Orchestrator\").first().json.userName }}, a {{ $(\"Orchestrator\").first().json.role }} on the {{ $(\"Orchestrator\").first().json.team }} team. VIP contacts: {{ $(\"Orchestrator\").first().json.vipContacts }}. Priority keywords: {{ $(\"Orchestrator\").first().json.priorityKeywords }}.\nYour only job: extract decisions, blockers, requests aimed at the user, and escalations from Slack messages. Ignore chit-chat and bot noise. Elevate anything from VIP contacts or containing priority keywords to URGENT. Include the permalink for each bullet when available.\nOUTPUT CONTRACT (plain text, bullets only, no paragraphs):\\nURGENT:\\n- <item> | who: <person> | why: <reason>\\nACTION ITEMS:\\n- <item> | owner: <person> | due: <date or n/a>\\nFYI:\\n- <item>\\nWrite \"- none\" under any empty section. Max 8 bullets total. Never invent facts that are not in the input."
+        }
+      },
+      "id": "80c23001-2117-4d29-a1f5-0350fb0beb08",
+      "name": "Slack Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1472,
+        128
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5.4-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "8cd70ec7-58ff-43d4-a3e8-29ea56a1df18",
+      "name": "Slack Model (mini)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1552,
+        352
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Output contract: { source, status: ok|unavailable|disabled, summary, note }\nconst g = $('State Management').first().json;\nif (!g.sources.slack) return [{ json: { source: 'Slack', status: 'disabled', summary: '', note: 'disabled or misconfigured in Orchestrator' } }];\nlet prep = null;\ntry { prep = $('Prep Slack Data').first().json; } catch (e) { prep = null; }\nconst out = $input.first().json;\nif (prep && prep.fetchError) return [{ json: { source: 'Slack', status: 'unavailable', summary: '', note: 'fetch failed: ' + prep.fetchError } }];\nif (!out.output) return [{ json: { source: 'Slack', status: 'unavailable', summary: '', note: 'agent failed: ' + JSON.stringify(out.error || 'no output').slice(0, 200) } }];\nreturn [{ json: { source: 'Slack', status: 'ok', summary: out.output, note: (prep ? prep.count : 0) + ' messages analysed' } }];"
+      },
+      "id": "9cd5d824-f8fb-48b2-a2de-69cfd6c048ba",
+      "name": "Package Slack Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "g1",
+              "leftValue": "={{ $json.sources.gmail }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4b875560-de19-45c4-8e57-b24b20d4d894",
+      "name": "Gmail Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": "={{ $(\"State Management\").first().json.gmailMaxResults }}",
+        "filters": {
+          "q": "={{ $(\"State Management\").first().json.gmailQuery }}",
+          "readStatus": "both",
+          "receivedAfter": "={{ $now.minus({ hours: $(\"State Management\").first().json.lookbackHours }).toISO() }}"
+        }
+      },
+      "id": "8cfe5652-be5b-48cd-96fe-80bb6d647de6",
+      "name": "Fetch Recent Emails",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1024,
+        320
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "webhookId": "2b67e582-17a9-429a-b213-897e7bb3420d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "2WwO3GDiH95Lc8a7",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input contract: normalize emails into one compact item (handles empty + failed fetch)\nconst items = $input.all().map(function (i) { return i.json; }).filter(function (j) { return Object.keys(j).length > 0; });\nconst failed = items.filter(function (j) { return j.error; });\nconst records = items.filter(function (j) { return !j.error; }).map(function (m) {\n  return { from: m.From, subject: m.Subject, snippet: String(m.snippet || '').slice(0, 300), unread: Array.isArray(m.labels) && m.labels.some(function (l) { return l.id === 'UNREAD'; }) };\n});\nconst errMsg = failed.length ? String((failed[0].error && failed[0].error.message) || failed[0].error) : null;\nreturn [{ json: { source: 'Gmail', fetchError: errMsg, count: records.length, records: JSON.stringify(records) } }];"
+      },
+      "id": "25536557-ab05-41c1-a71a-2ee9fd7a85cc",
+      "name": "Prep Gmail Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Emails from the last {{ $(\"State Management\").first().json.lookbackHours }} hours ({{ $json.count }} emails):\n{{ $json.records }}",
+        "options": {
+          "systemMessage": "=You are the EMAIL SPECIALIST agent in a multi-agent daily digest system. You are working for {{ $(\"Orchestrator\").first().json.userName }}, a {{ $(\"Orchestrator\").first().json.role }} on the {{ $(\"Orchestrator\").first().json.team }} team. VIP contacts: {{ $(\"Orchestrator\").first().json.vipContacts }}. Priority keywords: {{ $(\"Orchestrator\").first().json.priorityKeywords }}.\nYour only job: triage emails into what needs a reply, approval or decision vs. what is informational. Ignore newsletters, marketing and automated notifications unless they signal a blocker. Elevate VIP senders and priority keywords to URGENT. Reference each email by sender and subject.\nOUTPUT CONTRACT (plain text, bullets only, no paragraphs):\\nURGENT:\\n- <item> | who: <person> | why: <reason>\\nACTION ITEMS:\\n- <item> | owner: <person> | due: <date or n/a>\\nFYI:\\n- <item>\\nWrite \"- none\" under any empty section. Max 8 bullets total. Never invent facts that are not in the input."
+        }
+      },
+      "id": "0ff3fdb6-a085-49c8-a511-d07eb8a09828",
+      "name": "Gmail Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1472,
+        320
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5.4-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "6f465ec6-935c-4cc6-89e7-0bb4bf622663",
+      "name": "Gmail Model (mini)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1552,
+        544
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Output contract: { source, status: ok|unavailable|disabled, summary, note }\nconst g = $('State Management').first().json;\nif (!g.sources.gmail) return [{ json: { source: 'Gmail', status: 'disabled', summary: '', note: 'disabled or misconfigured in Orchestrator' } }];\nlet prep = null;\ntry { prep = $('Prep Gmail Data').first().json; } catch (e) { prep = null; }\nconst out = $input.first().json;\nif (prep && prep.fetchError) return [{ json: { source: 'Gmail', status: 'unavailable', summary: '', note: 'fetch failed: ' + prep.fetchError } }];\nif (!out.output) return [{ json: { source: 'Gmail', status: 'unavailable', summary: '', note: 'agent failed: ' + JSON.stringify(out.error || 'no output').slice(0, 200) } }];\nreturn [{ json: { source: 'Gmail', status: 'ok', summary: out.output, note: (prep ? prep.count : 0) + ' emails analysed' } }];"
+      },
+      "id": "8b0dd1b2-4d44-478b-87fc-7bbbc78b79bf",
+      "name": "Package Gmail Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.sources.calendar }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "519bfa7f-af58-40b3-8b13-9b4196846cd6",
+      "name": "Calendar Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "satcool22@gmail.com",
+          "cachedResultName": "satcool22@gmail.com"
+        },
+        "returnAll": true,
+        "timeMin": "={{ $now.setZone($(\"State Management\").first().json.timezone).startOf(\"day\").toISO() }}",
+        "timeMax": "={{ $now.setZone($(\"State Management\").first().json.timezone).endOf(\"day\").toISO() }}",
+        "options": {
+          "orderBy": "startTime",
+          "recurringEventHandling": "expand"
+        }
+      },
+      "id": "a296644f-768d-4a34-9a37-4dcbaba1ce59",
+      "name": "Fetch Today Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1024,
+        512
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "ZTJhBUFXjX1CskCk",
+          "name": "Google Calendar account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input contract: normalize events into one compact item (handles empty + failed fetch)\nconst items = $input.all().map(function (i) { return i.json; }).filter(function (j) { return Object.keys(j).length > 0; });\nconst failed = items.filter(function (j) { return j.error; });\nconst records = items.filter(function (j) { return !j.error; }).map(function (e) {\n  return {\n    title: e.summary,\n    start: (e.start && (e.start.dateTime || e.start.date)) || '',\n    end: (e.end && (e.end.dateTime || e.end.date)) || '',\n    organizer: e.organizer && e.organizer.email,\n    notes: String(e.description || '').slice(0, 300),\n  };\n});\nconst errMsg = failed.length ? String((failed[0].error && failed[0].error.message) || failed[0].error) : null;\nreturn [{ json: { source: 'Calendar', fetchError: errMsg, count: records.length, records: JSON.stringify(records) } }];"
+      },
+      "id": "ccdfede3-b51f-4dc2-b06e-1bc524916c3d",
+      "name": "Prep Calendar Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Today's calendar events ({{ $json.count }} events, timezone {{ $(\"State Management\").first().json.timezone }}):\n{{ $json.records }}",
+        "options": {
+          "systemMessage": "=You are the CALENDAR SPECIALIST agent in a multi-agent daily digest system. You are working for {{ $(\"Orchestrator\").first().json.userName }}, a {{ $(\"Orchestrator\").first().json.role }} on the {{ $(\"Orchestrator\").first().json.team }} team. VIP contacts: {{ $(\"Orchestrator\").first().json.vipContacts }}. Priority keywords: {{ $(\"Orchestrator\").first().json.priorityKeywords }}.\nYour only job: summarize today's schedule, flag decision meetings, back-to-back conflicts, missing prep, and meetings with VIPs. List meetings chronologically under FYI with start time; put meetings that need preparation or a decision under ACTION ITEMS or URGENT.\nOUTPUT CONTRACT (plain text, bullets only, no paragraphs):\\nURGENT:\\n- <item> | who: <person> | why: <reason>\\nACTION ITEMS:\\n- <item> | owner: <person> | due: <date or n/a>\\nFYI:\\n- <item>\\nWrite \"- none\" under any empty section. Max 8 bullets total. Never invent facts that are not in the input."
+        }
+      },
+      "id": "09922734-1d66-4655-93a0-d0483f3cc336",
+      "name": "Calendar Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1472,
+        512
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5.4-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "abbdfeda-9aa3-4d61-9028-1724d0aac779",
+      "name": "Calendar Model (mini)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1552,
+        736
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Output contract: { source, status: ok|unavailable|disabled, summary, note }\nconst g = $('State Management').first().json;\nif (!g.sources.calendar) return [{ json: { source: 'Calendar', status: 'disabled', summary: '', note: 'disabled or misconfigured in Orchestrator' } }];\nlet prep = null;\ntry { prep = $('Prep Calendar Data').first().json; } catch (e) { prep = null; }\nconst out = $input.first().json;\nif (prep && prep.fetchError) return [{ json: { source: 'Calendar', status: 'unavailable', summary: '', note: 'fetch failed: ' + prep.fetchError } }];\nif (!out.output) return [{ json: { source: 'Calendar', status: 'unavailable', summary: '', note: 'agent failed: ' + JSON.stringify(out.error || 'no output').slice(0, 200) } }];\nreturn [{ json: { source: 'Calendar', status: 'ok', summary: out.output, note: (prep ? prep.count : 0) + ' events analysed' } }];"
+      },
+      "id": "46c3103a-d321-4d3b-854d-660d98fd4425",
+      "name": "Package Calendar Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "id": "f262f336-623d-4a06-81cd-e3cccca05473",
+      "name": "Merge Agent Outputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1328,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fan-in: combine all agent outputs + previous run state into one synthesis payload\nconst results = $input.all().map(function (i) { return i.json; });\nconst st = $('State Management').first().json;\nconst ok = results.filter(function (r) { return r.status === 'ok'; });\nconst notOk = results.filter(function (r) { return r.status !== 'ok'; });\nconst sections = ok.map(function (r) { return '### ' + r.source + ' agent\\n' + r.summary; }).join('\\n\\n');\nreturn [{ json: {\n  sections: sections || 'No source returned data.',\n  availableSources: ok.map(function (r) { return r.source; }).join(', ') || 'none',\n  unavailableSources: notOk.map(function (r) { return r.source + ' (' + r.status + (r.note ? ': ' + r.note : '') + ')'; }).join('; ') || 'none',\n  previousDigest: st.previousDigest || 'No previous run on record - tag everything as [New].',\n  okCount: ok.length,\n  warnings: (st.warnings || []).join('; ') || 'none',\n} }];"
+      },
+      "id": "6d8aa3a2-6b6e-4201-9c10-79fa2206dc62",
+      "name": "Build Synthesis Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=SPECIALIST AGENT OUTPUTS:\n{{ $json.sections }}\n\nSOURCES AVAILABLE: {{ $json.availableSources }}\nSOURCES UNAVAILABLE: {{ $json.unavailableSources }}\n\nPREVIOUS DIGEST (for delta tracking):\n{{ $json.previousDigest }}",
+        "options": {
+          "systemMessage": "=You are the SYNTHESIZER agent - the aggregation layer of a multi-agent daily digest system. You are working for {{ $(\"Orchestrator\").first().json.userName }}, a {{ $(\"Orchestrator\").first().json.role }} on the {{ $(\"Orchestrator\").first().json.team }} team. VIP contacts: {{ $(\"Orchestrator\").first().json.vipContacts }}. Priority keywords: {{ $(\"Orchestrator\").first().json.priorityKeywords }}.\nYou receive bullet outputs from specialist agents (Slack, Gmail, Calendar). Your job:\n1. Deduplicate: merge items that refer to the same topic across sources into one bullet and cite all sources, e.g. (Slack+Gmail).\n2. Prioritize by urgency and VIP involvement.\n3. Resolve conflicts: if sources disagree (e.g. different dates), state both and flag \"Conflict\".\n4. Delta tracking: compare with PREVIOUS DIGEST and prefix every bullet with [New] or [Recurring].\n5. Graceful degradation: if any source is unavailable, say so in Source Status - never invent its content.\n\nFormat for Slack mrkdwn, bullets only, max 15 bullets, using EXACTLY these section headers:\n*Top Priorities*\n*Action Items*\n*Schedule*\n*FYI*\n*Source Status*\nWrite \"- Nothing to report\" under any empty section."
+        }
+      },
+      "id": "c8a7297b-dcdd-4a5e-82fc-0a125278ac65",
+      "name": "Synthesizer Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1776,
+        336
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5.4"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "b53b02ac-0b0e-40d5-8d2a-a23bef3e07f0",
+      "name": "Synthesizer Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1856,
+        560
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Output validation (empty / too long / missing sections) + persist state for next run\nconst out = $input.first().json;\nconst st = $('State Management').first().json;\nconst input = $('Build Synthesis Input').first().json;\nconst issues = [];\nlet digest = String(out.output || '').trim();\nif (!digest) {\n  issues.push('synthesizer returned empty output');\n  digest = '*Source Status*\\n- Synthesizer failed. Raw agent outputs below.\\n\\n' + input.sections;\n}\n['Top Priorities', 'Action Items', 'Schedule', 'FYI', 'Source Status'].forEach(function (s) {\n  if (digest.toLowerCase().indexOf(s.toLowerCase()) === -1) issues.push('missing section: ' + s);\n});\nif (digest.length > 3500) {\n  digest = digest.slice(0, 3500) + '\\n...(truncated)';\n  issues.push('digest truncated to 3500 chars');\n}\nconst header = '*Daily Digest for ' + st.userName + '* | ' + st.runDate;\nconst footer = '\\n\\n_Session ' + st.sessionId + ' | Sources OK: ' + input.availableSources + ' | Unavailable: ' + input.unavailableSources +\n  (issues.length ? ' | Validation: ' + issues.join(', ') : '') + '_';\n\n// State management: store this digest so the next run can tag [New] vs [Recurring]\n// (static data persists only for production / scheduled runs, not manual test runs)\nconst store = $getWorkflowStaticData('global');\nstore.previousDigest = digest;\nstore.lastRunAt = st.runTimestamp;\nstore.lastSessionId = st.sessionId;\n\nreturn [{ json: { message: header + '\\n\\n' + digest + footer, issues: issues, sessionId: st.sessionId } }];"
+      },
+      "id": "34f41c8f-e651-4684-a71f-7d4bc2e250dc",
+      "name": "Validate & Save State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2128,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "C0C9CGEAE83",
+          "cachedResultName": "project_updates"
+        },
+        "text": "={{ $json.message }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false,
+          "mrkdwn": true
+        }
+      },
+      "id": "edce2419-6972-46f3-86a5-2f11c3ef86e9",
+      "name": "Send Digest to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.7,
+      "position": [
+        2352,
+        336
+      ],
+      "webhookId": "dc0f3070-8681-49dd-9b7a-e5c05ecb2842",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "M4vRF9oHzN1p9OcQ",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily 8 AM Trigger": {
+      "main": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Guardrails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardrails": {
+      "main": [
+        [
+          {
+            "node": "State Management",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "State Management": {
+      "main": [
+        [
+          {
+            "node": "Slack Enabled?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gmail Enabled?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calendar Enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Slack Messages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Package Slack Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Slack Messages": {
+      "main": [
+        [
+          {
+            "node": "Prep Slack Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Slack Data": {
+      "main": [
+        [
+          {
+            "node": "Slack Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Agent": {
+      "main": [
+        [
+          {
+            "node": "Package Slack Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Model (mini)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Slack Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Package Slack Result": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recent Emails",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Package Gmail Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Recent Emails": {
+      "main": [
+        [
+          {
+            "node": "Prep Gmail Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Gmail Data": {
+      "main": [
+        [
+          {
+            "node": "Gmail Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Agent": {
+      "main": [
+        [
+          {
+            "node": "Package Gmail Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Model (mini)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Gmail Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Package Gmail Result": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Calendar Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Today Events",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Package Calendar Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Today Events": {
+      "main": [
+        [
+          {
+            "node": "Prep Calendar Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Calendar Data": {
+      "main": [
+        [
+          {
+            "node": "Calendar Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calendar Agent": {
+      "main": [
+        [
+          {
+            "node": "Package Calendar Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calendar Model (mini)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Calendar Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Package Calendar Result": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge Agent Outputs": {
+      "main": [
+        [
+          {
+            "node": "Build Synthesis Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Synthesis Input": {
+      "main": [
+        [
+          {
+            "node": "Synthesizer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Synthesizer Agent": {
+      "main": [
+        [
+          {
+            "node": "Validate & Save State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Synthesizer Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Synthesizer Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Save State": {
+      "main": [
+        [
+          {
+            "node": "Send Digest to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timezone": "Asia/Kolkata",
+    "errorWorkflow": "gy15BTrh5cLD01Oi"
+  },
+  "versionId": "68b7bf8f-36aa-4a4a-a0e2-6f981d883ea5",
+  "meta": {
+    "instanceId": "e8bd0f6b6c22887fe8921b51bf313e4db40464458bde300a6ed094541cb5742c"
+  },
+  "nodeGroups": [
+    {
+      "id": "4e8fc939-cdcc-4d03-becb-b2df31dd49cf",
+      "name": "Configure & validate run",
+      "nodeIds": [
+        "e7b5e945-f364-4d50-aff6-443b0e2780dd",
+        "51956159-2d3c-4c98-bd60-47eda8917804",
+        "32cf4c8a-c877-49e6-bc15-aa525d5b073c"
+      ],
+      "description": "Single source of truth for sources, role and VIPs; pre-flight checks; session ID and last run loaded for delta tracking"
+    },
+    {
+      "id": "3f5baf83-a1c0-4597-9552-bb556459e5d3",
+      "name": "Summarize Slack activity",
+      "nodeIds": [
+        "f01077e7-66e4-4c76-8404-733969a2931b",
+        "6a297a52-02cf-4737-b3ba-b39e2b5c8e04",
+        "3d1e4149-65f0-4b51-9158-f6d8c69d5261",
+        "80c23001-2117-4d29-a1f5-0350fb0beb08",
+        "8cd70ec7-58ff-43d4-a3e8-29ea56a1df18",
+        "9cd5d824-f8fb-48b2-a2de-69cfd6c048ba"
+      ],
+      "description": "Skipped if disabled; failed or empty searches still return a status so the digest is never blocked"
+    },
+    {
+      "id": "cc7fb0a6-095b-4b29-9332-5439cf3bd9e2",
+      "name": "Triage inbox",
+      "nodeIds": [
+        "4b875560-de19-45c4-8e57-b24b20d4d894",
+        "8cfe5652-be5b-48cd-96fe-80bb6d647de6",
+        "25536557-ab05-41c1-a71a-2ee9fd7a85cc",
+        "0ff3fdb6-a085-49c8-a511-d07eb8a09828",
+        "6f465ec6-935c-4cc6-89e7-0bb4bf622663",
+        "8b0dd1b2-4d44-478b-87fc-7bbbc78b79bf"
+      ],
+      "description": "Last 24h of email sorted into urgent, action and FYI; failures reported as unavailable instead of crashing"
+    },
+    {
+      "id": "41e61642-2238-4d87-b618-509ecde009d7",
+      "name": "Review today schedule",
+      "nodeIds": [
+        "519bfa7f-af58-40b3-8b13-9b4196846cd6",
+        "a296644f-768d-4a34-9a37-4dcbaba1ce59",
+        "ccdfede3-b51f-4dc2-b06e-1bc524916c3d",
+        "09922734-1d66-4655-93a0-d0483f3cc336",
+        "abbdfeda-9aa3-4d61-9028-1724d0aac779",
+        "46c3103a-d321-4d3b-854d-660d98fd4425"
+      ],
+      "description": "Today's meetings flagged for decisions, conflicts and VIPs; failures reported as unavailable instead of crashing"
+    },
+    {
+      "id": "eef9cf90-29c8-48dd-b5e3-e9ad06c047d0",
+      "name": "Synthesize & deliver digest",
+      "nodeIds": [
+        "f262f336-623d-4a06-81cd-e3cccca05473",
+        "6d8aa3a2-6b6e-4201-9c10-79fa2206dc62",
+        "c8a7297b-dcdd-4a5e-82fc-0a125278ac65",
+        "b53b02ac-0b0e-40d5-8d2a-a23bef3e07f0",
+        "34f41c8f-e651-4684-a71f-7d4bc2e250dc",
+        "edce2419-6972-46f3-86a5-2f11c3ef86e9"
+      ],
+      "description": "Dedupes across sources, tags [New]/[Recurring], checks length and sections, then posts one digest to Slack"
+    }
+  ],
+  "id": "hXoq0QOAjbJQnZNt",
+  "tags": []
+}
